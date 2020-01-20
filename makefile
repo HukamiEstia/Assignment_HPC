@@ -1,22 +1,18 @@
 
-CXX = g++
+CXX = mpic++
 CXXFLAGS = -Wall -g -lstdc++
 
-a.out: Main.o DataStorage.o SetVariables.o Solutions.o Utils.o LinearSolvers.o
-	$(CXX) $(CXXFLAGS) -o a.out Main.o DataStorage.o SetVariables.o Solutions.o Utils.o LinearSolvers.o
+run: ParallelMain.o Parameters.o DataStorage.o ParallelSolutions.o
+	$(CXX) -o run ParallelMain.o Parameters.o DataStorage.o ParallelSolutions.o
 
-Main.o: Main.cpp DataStorage.h SetVariables.h Solutions.h Utils.h LinearSolvers.h
-	$(CXX) $(CXXFLAGS) -c Main.cpp
+Main.o: Main.cpp Parameters.h DataStorage.h ParallelSolutions.h
+	$(CXX) -c ParallelMain.cpp
+
+Parameters.o: Parameters.h
 
 DataStorage.o: DataStorage.h
 
-SetVariables.o: SetVariables.h
-
-Solutions.o: Solutions.h DataStorage.h SetVariables.h LinearSolvers.h
-
-Utils.o: Utils.h
-
-LinearSolvers.o: LinearSolvers.h Utils.h
+ParallelSolutions.o: ParallelSolutions.h Parameters.h DataStorage.h
 
 clean:
 	$(RM) count *.o *~|

@@ -1,156 +1,79 @@
 #include "Solutions.h"
 
-void debugSimple(DataStorage &storage, const SetVariables variables) {
+
+void analytical(DataStorage &storage, const Parameters params) {
 	/*
-	This method is forward time forward space
-	used to debug during the first stages of development
+	Compute the analytical solution for the specified discretization step and problem parameters
+	/**/
+	unsigned int numberOfT = (params.getDuration() / (double)storage.getDT()) + 1;
+	unsigned int numberOfX = ((double)params.getL() / (double)storage.getDX()) + 1;
+	vector<vector<double>> solutionMat(numberOfT);
+	solutionMat.push_back(params.getTime_0(numberOfX));
+
+	for (unsigned int n = 1; n < numberOfT; n++) {
+		vector<double> currentTime(numberOfX);
+		for (unsigned int space = 0; space < numberOfX; space++) {
+			double sum{ 0 };
+			for (int i = 1; i < 200; i++) {
+				sum += exp(-params.getD()
+						* powf((i * PI / params.getL()), 2.0)
+						* storage.getDT() * n) 
+					* (1 - (pow(-1, i))) 
+					* sin(i * PI * storage.getDX() * space / params.getL())
+					/ (i * PI);
+			}
+			currentTime.push_back(params.getT_in() + 2 * (38.0 - params.getT_in())* sum);
+		}
+
+		solutionMat.push_back(currentTime);
+	}
+	storage.setData(solutionMat);
+}
+
+void FTCS(DataStorage &storage, const Parameters params) {
+	/*
+	This method is forward time central space
 	/**/
 	double left, right, central;
-	double dT = sqrt(pow(storage.getDX(), 2) / (variables.getD()*2));
-	unsigned int numberOfT = variables.getT() / storage.getDT() + 1;
-	unsigned int numberOfX = variables.getX() / storage.getDX() + 1;
-	vector<vector<double>> finalVector(numberOfT);
-	vector<double> previousTime(numberOfX);
-	finalVector[0] = variables.getT0(numberOfX);
+	
+	//set dT so that the scheme is stable
+	double dT = sqrt(pow(storage.getDX(), 2) / (params.getD()*2));
+
+	//compute the number of time and space discretisation steps
+	unsigned int numberOfT = params.getDuration() / storage.getDT() + 1;
+	unsigned int numberOfX = params.getL() / storage.getDX() + 1;
+
+	//Initialiazing the matrix holding the solution
+	vector<vector<double>> solutionMat;
+	solutionMat.push_back(params.getTime_0(numberOfX));
 
 	//define r = D.(dt/dx^2)
-	double r = (variables.getD() * dT) / (pow(storage.getDX(), 2));
+	double r = (params.getD() * dT) / (pow(storage.getDX(), 2));
 
-	for (unsigned int time = 1; time < numberOfT; time++) {
-		previousTime = finalVector[time - 1];
-		vector<double> construct(numberOfX);
-		for (unsigned int space = 0; space < numberOfX; space++) {
-			if (space == 0) {
-				construct[0] = variables.getX0();
-			}else if (space == numberOfX - 1) {
-				construct[space] = variables.getXMax();
-			}else {
-				////T(i-1,n)
-				left = previousTime[space - 1];
-				//T(i,n)
-				central = previousTime[space];
-				//T(i+1,n)
-				right = previousTime[space + 1];
-				//compute T(i,n+1)
-				construct[space] = central+r*(left-2*central+right);
+	for (unsigned int n = 1; n < numberOfT; n++) {
+		
+		//Initializing vector holding the solution at t=n+1
+		vector<double> currentTime(numberOfX);
+
+		//set boundary conditions
+		currentTime[0] = params.getT_sur();
+		currentTime[numberOfX - 1] = params.getT_in();
+		for (unsigned int i = 1; i < numberOfX - 1; i++) {
+			////T(n, i-1)
+			left = solutionMat[n - 1][i - 1];
+			//T(n, i)
+			central = solutionMat[n - 1][i];
+			//T(n, i+1)
+			right = solutionMat[n - 1][i+1];
+			//compute T(n+1, i)
+			currentTime[i] = central+r*(left-2*central+right);
 			}
-		}
-		finalVector[time] = construct;
+		solutionMat.push_back(currentTime);
 	}
-	storage.setData(finalVector);
+	storage.setData(solutionMat);
 }
 
-void duFortFrankel(DataStorage &storage, const SetVariables variables){
-	/*
-	Solve using the DuFort-Frankel scheme 
-	/**/
-	double right, left, down;
-	unsigned int numberOfT = (variables.getT() / storage.getDT())+1;	
-	unsigned int numberOfX = (variables.getX() / storage.getDX())+1;
-	vector<vector<double>> finalVector(numberOfT);
-	vector<double> previousTime(numberOfX);
-	finalVector[0] = variables.getT0(numberOfX);
-	double r = 2*(variables.getD() * storage.getDT()) / (powf(storage.getDX(), 2));
-
-	// Method for getting time == 1;
-	//simply duplicating the initial conditions
-	
-	finalVector[1] = variables.getT0(numberOfX);
-	/**/
-	/*
-	//Computing the first timestep with The laasonen method
-	SetVariables varT0(variables, storage.getDT() * 2);
-	DataStorage storT0(storage.getDX(), storage.getDT());
-	laasonenImplicit(storT0, varT0, Thomas);
-	finalVector[1] = storT0.getData()[1];
-	/**/
-	
-	for (unsigned int time = 2; time < numberOfT; time++) {
-		previousTime = finalVector[time - 1];
-		vector<double> construct(numberOfX);
-		for (unsigned int space = 0; space < numberOfX; space++) {
-			//set boundary solution
-			if (space == 0) {
-				construct[space] = variables.getX0();
-			}else if (space == numberOfX - 1) {
-				construct[space] = variables.getXMax();
-			}else{
-				/*cout << space << "\n";
-				cout << "size " << previousTime.size() << "\n";
-				cout << "size " << finalVector.size() << "\n";*/
-				
-				//T(i-1,n)
-				left = previousTime[space - 1];
-				//T(i+1,n)
-				right = previousTime[space + 1];
-				//T(i,n-1)
-				down = finalVector[time - 2][space];
-				//compute T(i,n+1)
-				construct[space] = (down + r * (right - down + left))/(1 + r);
-			}
-		}
-		finalVector[time] = construct;
-
-	}
-	storage.setData(finalVector);
-}
-
-void richardson(DataStorage &storage, const SetVariables variables){
-	/*
-	Solve using the Richardson scheme
-	/**/
-	double right, left, central, down;
-	unsigned int numberOfT = (variables.getT() / (double)storage.getDT())+1;
-	unsigned int numberOfX = ((double)variables.getX() / (double)storage.getDX())+1;
-	vector<vector<double>> finalVector(numberOfT);
-	vector<double> previousTime(numberOfX);
-	finalVector[0] = variables.getT0(numberOfX);
-	double r = (variables.getD() * storage.getDT()) / (pow(storage.getDX(), 2));
-
-	// Method of getting time == 1
-
-	//simply duplicating the initial conditions
-	finalVector[1] = variables.getT0(numberOfX);
-	/**/
-	
-	//Computing the first timestep with The Crank-Niholson method
-	SetVariables varT0(variables, storage.getDT()*2);
-	DataStorage storT0(storage.getDX(), storage.getDT());
-	crankNicholson(storT0, varT0, Thomas);
-	finalVector[1] = storT0.getData()[1];
-	/**/
-	
-
-	for (unsigned int time = 2; time < numberOfT; time++) {
-		previousTime = finalVector[time - 1];
-		vector<double> construct(numberOfX);
-		for (unsigned int space = 0; space < numberOfX; space++) {
-			//Set boundary conditions
-			if (space == 0) {
-				construct[space] = variables.getX0();
-			}
-			else if (space == numberOfX - 1) {
-				construct[space] = variables.getXMax();
-			}
-			else {
-				//T(i-1,n)
-				left = previousTime[space - 1];
-				//T(i+1,n)
-				right = previousTime[space + 1];
-				//T(i,n)
-				central = previousTime[space];
-				//T(i,n-1)
-				down = finalVector[time - 2][space];
-				//compute T(i,n+1)
-				construct[space] = (down + 2 * r * (right - 2*central + left));
-			}
-		}
-		finalVector[time] = construct;
-	}
-	storage.setData(finalVector);
-}
-
-void laasonenImplicit(DataStorage& storage, const SetVariables variables, vector<double>(*f)(vector<vector<double>>, vector<double>)) {
+void laasonenImplicit(DataStorage& storage, const Parameters params, vector<double>(*f)(vector<vector<double>>, vector<double>)) {
 	/*
 	Solve using the laasonen scheme
 	this is an implicit scheme, at each timestep, all the points in space are computed by solving a linear system
@@ -158,13 +81,13 @@ void laasonenImplicit(DataStorage& storage, const SetVariables variables, vector
 	A*T(n+1) = T(n)
 	which we solve for T(n+1)
 	/**/
-	unsigned int numberOfT = (variables.getT() / (double)storage.getDT()) + 1;
-	unsigned int numberOfX = ((double)variables.getX() / (double)storage.getDX()) + 1;
+	unsigned int numberOfT = (params.getDuration() / (double)storage.getDT()) + 1;
+	unsigned int numberOfX = ((double)params.getL() / (double)storage.getDX()) + 1;
 	vector<vector<double>> finalVector(numberOfT);
 	vector<double> previousTime(numberOfX);
-	finalVector[0] = variables.getT0(numberOfX);
+	finalVector[0] = params.getTime_0(numberOfX);
 	//compute the coeficients of the linear system
-	double r = 1 * (variables.getD() * storage.getDT()) / powf(storage.getDX(), 2.0);
+	double r = 1 * (params.getD() * storage.getDT()) / powf(storage.getDX(), 2.0);
 	double a = 2 * r + 1;
 	double b = -r;
 
@@ -222,10 +145,10 @@ void laasonenImplicit(DataStorage& storage, const SetVariables variables, vector
 			for (int i = 0; i < numberOfX; i++) {
 				//set the boundary conditions
 				if (i == 0) {
-					construct[i] = variables.getX0();
+					construct[i] = params.getT_sur();
 				}
 				else if (i == numberOfX - 1) {
-					construct[i] = variables.getXMax();
+					construct[i] = params.getT_sur();
 				}
 				//copy the results of the resolution
 				else {
@@ -238,7 +161,7 @@ void laasonenImplicit(DataStorage& storage, const SetVariables variables, vector
 	}
 }
 
-void crankNicholson(DataStorage &storage, const SetVariables variables, vector<double>(*f)(vector<vector<double>>, vector<double>)){
+void crankNicholson(DataStorage &storage, const Parameters params, vector<double>(*f)(vector<vector<double>>, vector<double>)){
 	/*
 	Solve using the Crank-Nicholson scheme
 	this is an implicit scheme, at each timestep, all the points in space are computed by solving a linear system
@@ -246,13 +169,13 @@ void crankNicholson(DataStorage &storage, const SetVariables variables, vector<d
 	A*T(n+1) = B*T(n)
 	which we solve for T(n+1)
 	/**/
-	unsigned int numberOfT = variables.getT() / (double)storage.getDT() + 1;
-	unsigned int numberOfX = (double)variables.getX() / (double)storage.getDX() + 1;
+	unsigned int numberOfT = params.getDuration() / (double)storage.getDT() + 1;
+	unsigned int numberOfX = (double)params.getL() / (double)storage.getDX() + 1;
 	vector<vector<double>> finalVector(numberOfT);
-	vector<double> previousTime = variables.getT0(numberOfX);
+	vector<double> previousTime = params.getTime_0(numberOfX);
 	finalVector[0] = previousTime;
 	//compute r
-	double r = variables.getD() * storage.getDT() /(2 * pow(storage.getDX(), 2));
+	double r = params.getD() * storage.getDT() /(2 * pow(storage.getDX(), 2));
 	//compute the coeficients of the linear system
 	double a = 1 + 2 * r;
 	double b = 1 - 2 * r;
@@ -310,32 +233,6 @@ void crankNicholson(DataStorage &storage, const SetVariables variables, vector<d
 
 		// Solver
 		vector<double> construct = (f)(A, righthandSide);
-
-		finalVector[time] = construct;
-	}
-	storage.setData(finalVector);
-}
-
-void analytical(DataStorage &storage, const SetVariables variables) {
-	/*
-	Compute the analytical solution for the specified discretization step and problem parameters
-	/**/
-	unsigned int numberOfT = (variables.getT() / (double)storage.getDT())+1;
-	unsigned int numberOfX = ((double)variables.getX() / (double)storage.getDX())+1;
-	vector<vector<double>> finalVector(numberOfT);
-	finalVector[0] = variables.getT0(numberOfX);
-	vector<double> previousTime;
-
-	for (unsigned int time = 1; time < numberOfT; time++) {
-		previousTime = finalVector[time-1];
-		vector<double> construct(numberOfX);
-		for (unsigned int space = 0; space < numberOfX; space++) {
-			double sum{ 0 };
-			for (int i = 1; i < 200; i++) {
-				sum += exp(-variables.getD() * powf((i * PI / variables.getX()), 2.0) * storage.getDT() * time) * (1 - (pow(-1, i))) * sin(i * PI * storage.getDX() * space / variables.getX()) / (i * PI);
-			}
-			construct[space] = variables.getX0() + 2 * (38.0 - variables.getX0())* sum;
-		}
 
 		finalVector[time] = construct;
 	}

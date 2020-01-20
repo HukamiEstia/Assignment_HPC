@@ -8,7 +8,7 @@
 
 const double PI = atan(1.0) * 4;
 
-void analytical(DataStorage& storage, const Parameters params);
+void ParallelAnalytical(DataStorage& storage, const Parameters params);
 void FTCS(DataStorage &storage, const Parameters params); 
 void laasonenImplicit(DataStorage& storage, const Parameters params, vector<double>(*f)(vector<vector<double>>, vector<double>));
 void crankNicholson(DataStorage &storage, const Parameters params, vector<double>(*f)(vector<vector<double>>, vector<double>));
