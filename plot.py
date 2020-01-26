@@ -18,7 +18,9 @@ with open(f"{args.method}.dat") as f:
 # print(dataTable[10])
 
 # construct the x-axis
-x = [i*0.05 for i in range(len(dataTable[0]))]
+nX = len(dataTable[0])
+dX = 31/(nX - 1)
+x = [i*dX for i in range(nX)]
 
 plt.rcParams.update({'font.size': 18})
 
@@ -42,4 +44,4 @@ plt.subplots_adjust(top=0.85, bottom=0.08,
                     left=0.10, right=0.95,
                     hspace=0.60, wspace=0.35)
 
-plt.show()
+fig.savefig(f"{args.method}.png")

@@ -52,3 +52,24 @@ int main() {
     // Finalize the MPI environment.
     MPI_Finalize();
 }
+
+
+MPI_Scatterv(currentTime, stride, displs, MPI_FLOAT,
+				 &subCurrent, MPI_FLOAT, 0, MPI_COMM_WORLD);
+
+    unsigned int subRangeTest = (numberOfX / world_size);
+	unsigned int rest = numberOfX - (subRangeTest * world_size); 
+
+	int displs[world_size];
+	int stride[world_size];
+	for (int i = 0; i < world_size; i++){
+		stride[i] = subRangeTest;
+	}
+	for (int i = 0; i < rest; i++){
+		stride[i]++;
+	}
+	int offset{0};
+	for (int i = 0; i < world_size; i++) {
+		displs[i] = offset;
+		offset += stride[i];
+	}

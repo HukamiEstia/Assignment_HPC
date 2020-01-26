@@ -45,5 +45,6 @@
         "stdexcept": "cpp",
         "streambuf": "cpp",
         "typeinfo": "cpp"
-    }
+    },
+    "python.pythonPath": "/home/hukami/.local/share/virtualenvs/Assignment_HPC-65GvrKkU/bin/python"
 }

@@ -39,9 +39,9 @@ double Parameters::getT_in() const {
 vector<double> Parameters::getTime_0(int size) const {
 	vector<double> data;
 	data.push_back(T_sur);
-	for (int i = 1; i < size; i++) {
+	for (int i = 1; i < size - 1; i++) {
 		data.push_back(T_in);
 	}
-	data.push_back(T_in);
+	data.push_back(T_sur);
 	return data;
 }
