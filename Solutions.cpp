@@ -138,8 +138,8 @@ void laasonenImplicit(DataStorage& storage, const Parameters params, vector<doub
 			}
 
 			// Solver
-			vector<double> constr = (f)(A, previousTime);
 			//compute all the unknown of T(i,n+1)
+			vector<double> constr = (f)(A, previousTime);
 			vector<double> construct(numberOfX);
 
 			for (int i = 0; i < numberOfX; i++) {

@@ -1,12 +1,11 @@
-#include "mpi.h"
 #include "ParallelSolutions.h"
-#include "algorithm"
 
-void ParallelAnalytical(DataStorage &storage, const Parameters params) {
+double ParallelAnalytical(DataStorage &storage, const Parameters params) {
 	/*
 	Compute the analytical solution for the specified discretization step and problem parameters
 	/**/
-	
+	double starttime, finaltime, precision;
+
     // Initialize the MPI environment
     MPI_Init(NULL, NULL);
 	MPI_Status status;
@@ -18,6 +17,9 @@ void ParallelAnalytical(DataStorage &storage, const Parameters params) {
     // Get the rank of the process
     int world_rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
+	precision = MPI_Wtick();
+	starttime = MPI_Wtime();
 
 	unsigned int numberOfT = (params.getDuration() / (double)storage.getDT()) + 1;
 	unsigned int numberOfX = ((double)params.getL() / (double)storage.getDX()) + 1;
@@ -63,20 +65,25 @@ void ParallelAnalytical(DataStorage &storage, const Parameters params) {
 			solutionMat.push_back(temp);
 		}
 	}
+	finaltime = MPI_Wtime();
+
 	if (world_rank == 0){
-		for (auto e : solutionMat[10]){
-				std::cout << e << " ";
-			}
+		std::cout << "time: " << finaltime - starttime
+		;
 		storage.setData(solutionMat);
 	}
     // Finalize the MPI environment.
     MPI_Finalize();
+
+	return finaltime - starttime;
 }
 
-void FTCS(DataStorage &storage, const Parameters params) {
+double FTCS(DataStorage &storage, const Parameters params) {
 	/*
 	This method is forward time central space
 	/**/
+	double starttime, finaltime, precision;
+
 	double left, right, central;
 	
 	//set dT limit so that the scheme is stable
@@ -100,6 +107,9 @@ void FTCS(DataStorage &storage, const Parameters params) {
     // Get the rank of the process
     int world_rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
+	precision = MPI_Wtick();
+	starttime = MPI_Wtime();
 	
 	//compute the number of time and space discretisation steps
 	unsigned int numberOfT = params.getDuration() / storage.getDT() + 1;
@@ -253,16 +263,241 @@ void FTCS(DataStorage &storage, const Parameters params) {
 			solutionMat.push_back(temp);
 		}
 	}
+	finaltime = MPI_Wtime();
 
 	//store results
 	if (world_rank == 0){
-		std::cout << solutionMat.size() << "\n";
-		for (auto e : solutionMat[4]){
-				std::cout << e << " ";
-			}
 		storage.setData(solutionMat);
 	}
     
 	// Finalize the MPI environment.
     MPI_Finalize();
+
+	return finaltime - starttime;
+}
+
+double laasonenImplicit(DataStorage& storage, const Parameters params) {
+	/*
+	Solve using the laasonen scheme
+	this is an implicit scheme, at each timestep, all the points in space are computed by solving a linear system
+	We formulate our problem as the matricial equation:
+	A*T(n+1) = T(n)
+	which we solve for T(n+1)
+	/**/
+
+	int world_size, world_rank;
+	unsigned int numberOfT, numberOfX, subRange, remainder;
+	int *displacements, *strides;
+	double *diag, *up_diag, *lo_diag, *x, *q;
+	double starttime, finaltime, precision;
+	
+	// Initialize the MPI environment
+    MPI_Init(NULL, NULL);
+	MPI_Status status;
+
+	// Get the number of processes
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+	//check that world_size is a power of 2
+	assert(ceil(log2(world_size)) == floor(log2(world_size)));
+
+    // Get the rank of the process
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
+	precision = MPI_Wtick();
+	starttime = MPI_Wtime();
+
+	//compute the number of time and space discretisation steps
+	numberOfT = params.getDuration() / storage.getDT() + 1;
+	numberOfX = params.getL() / storage.getDX() + 1;
+
+	//compute domain division
+	subRange = (numberOfX / world_size);
+	remainder = numberOfX - (subRange * world_size); 
+
+	displacements = new int[world_size];
+	strides = new int[world_size];
+
+	for (int i = 0; i < world_size; i++){
+		strides[i] = subRange;
+	}
+	for (int i = 0; i < remainder; i++){
+		strides[i]++;
+	}
+
+	int offset{0};
+	for (int i = 0; i < world_size; i++) {
+		displacements[i] = offset;
+		offset += strides[i];
+	}
+
+	vector<vector<double>> solutionMat(numberOfT);
+	vector<double> previousTime(numberOfX);
+	solutionMat[0] = params.getTime_0(numberOfX);
+
+	//define r = D.(dt/dx^2)
+	double r = params.getD()*(params.getDuration()*storage.getDT()/pow(params.getL()*storage.getDX(), 2));
+
+	//compute the coeficients of the linear system
+	double a = 2 * r + 1;
+	double b = -r;
+
+	//construct A by diagonals
+	diag = new double[numberOfX];
+	up_diag = new double[numberOfX - 1];
+	lo_diag = new double[numberOfX - 1];
+	
+	diag[0] = diag[numberOfX - 1] = 1;
+	diag[numberOfX - 2] = a;
+	up_diag[0] = lo_diag[numberOfX - 2] = 0;
+	lo_diag[0] = up_diag[numberOfX - 2] = b;
+	for (int i = 1; i < numberOfX - 2; i++){
+		diag[i] = a;
+		up_diag[i] = lo_diag[i] = b;
+	}
+
+	q = new double[numberOfX];
+	x = new double[numberOfX];
+	
+	for (int time = 1; time < numberOfT; time++) {
+		// Construct vector q
+	
+		for (int i = 0; i < numberOfX; i++){
+			q[i] = solutionMat[time - 1][i];
+		}
+		ParallelThomas(world_rank, world_size, numberOfX,
+					   strides, displacements,
+					   diag, lo_diag, up_diag, x, q);
+
+		vector<double> temp;
+		for (int i=0; i<numberOfX; i++){
+			temp.push_back(x[i]);
+		}
+		solutionMat[time] = temp;
+	}
+
+	finaltime = MPI_Wtime();
+
+	// store results
+	if (world_rank == 0){
+		storage.setData(solutionMat);
+	}
+    
+	// Finalize the MPI environment.
+    MPI_Finalize();
+
+	return finaltime - starttime;
+}
+
+double crankNicholson(DataStorage& storage, const Parameters params) {
+	/*
+	Solve using the laasonen scheme
+	this is an implicit scheme, at each timestep, all the points in space are computed by solving a linear system
+	We formulate our problem as the matricial equation:
+	A*T(n+1) = T(n)
+	which we solve for T(n+1)
+	/**/
+
+	int world_size, world_rank;
+	unsigned int numberOfT, numberOfX, subRange, remainder;
+	int *displacements, *strides;
+	double *diag, *up_diag, *lo_diag, *x, *q;
+	double starttime, finaltime, precision;
+	
+	// Initialize the MPI environment
+    MPI_Init(NULL, NULL);
+	MPI_Status status;
+
+	// Get the number of processes
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+	//check that world_size is a power of 2
+	assert(ceil(log2(world_size)) == floor(log2(world_size)));
+
+    // Get the rank of the process
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
+	precision = MPI_Wtick();
+	starttime = MPI_Wtime();
+
+	//compute the number of time and space discretisation steps
+	numberOfT = params.getDuration() / storage.getDT() + 1;
+	numberOfX = params.getL() / storage.getDX() + 1;
+
+	//compute domain division
+	subRange = (numberOfX / world_size);
+	remainder = numberOfX - (subRange * world_size); 
+
+	displacements = new int[world_size];
+	strides = new int[world_size];
+
+	for (int i = 0; i < world_size; i++){
+		strides[i] = subRange;
+	}
+	for (int i = 0; i < remainder; i++){
+		strides[i]++;
+	}
+
+	int offset{0};
+	for (int i = 0; i < world_size; i++) {
+		displacements[i] = offset;
+		offset += strides[i];
+	}
+
+	vector<vector<double>> solutionMat(numberOfT);
+	vector<double> previousTime(numberOfX);
+	solutionMat[0] = params.getTime_0(numberOfX);
+
+	//define r = D.(dt/dx^2)
+	//compute r
+	double r = params.getD() * storage.getDT() /(2 * pow(storage.getDX(), 2));
+	//compute the coeficients of the linear system
+	double a = 1 + 2 * r;
+	double b = 1 - 2 * r;
+	double c = - r;
+
+	//construct A by diagonals
+	diag = new double[numberOfX];
+	up_diag = new double[numberOfX - 1];
+	lo_diag = new double[numberOfX - 1];
+	
+	diag[0] = diag[numberOfX - 1] = 1;
+	diag[numberOfX - 2] = a;
+	up_diag[0] = lo_diag[numberOfX - 2] = 0;
+	up_diag[numberOfX - 2] = lo_diag[0] = c;
+	for (int i = 1; i < numberOfX - 2; i++){
+		diag[i] = a;
+		up_diag[i] = lo_diag[i] = c;
+	}
+
+	q = new double[numberOfX];
+	x = new double[numberOfX];
+	
+	for (int time = 1; time < numberOfT; time++) {
+		// Construct vector q
+	
+		for (int i = 0; i < numberOfX; i++){
+			q[i] = b * solutionMat[time - 1][i] + c * (solutionMat[time - 1][i - 1] +
+													   solutionMat[time - 1][i + 1]);
+		}
+		ParallelThomas(world_rank, world_size, numberOfX,
+					   strides, displacements,
+					   diag, lo_diag, up_diag, x, q);
+
+		vector<double> temp;
+		for (int i=0; i<numberOfX; i++){
+			temp.push_back(x[i]);
+		}
+		solutionMat[time] = temp;
+	}
+
+	finaltime = MPI_Wtime();
+	
+	// store results
+	if (world_rank == 0){
+		storage.setData(solutionMat);
+	}
+    
+	// Finalize the MPI environment.
+    MPI_Finalize();
+
+	return finaltime - starttime;
 }
