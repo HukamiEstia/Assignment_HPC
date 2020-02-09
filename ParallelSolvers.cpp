@@ -125,7 +125,7 @@ void ParallelThomas(int world_rank, int world_size,
         tmp[i] = l[i];
     }
     MPI_Allreduce(tmp, l, N, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    delete[] tmp;
+
     
     if (world_rank == 0){
         y[0] = q[0];

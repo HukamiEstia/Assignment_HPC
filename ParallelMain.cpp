@@ -6,13 +6,19 @@
 #include "Utils.h"
 #include "LinearSolvers.h"
 #include "fstream"
-#include <string.h> 
+#include <string.h>
 
 int main(int argc, char* argv[]) {
 	double Time;
 	ofstream times;
+	string space, time, name, time_name;
 
-	times.open("times.dat", std::ios_base::app);
+	space = argv[1];
+	time = argv[2];
+	name = argv[3];
+	name = name + "_" + space + "_" + time; 
+	time_name = "time_" + name + ".dat";
+	times.open(time_name);
 	//Definition of the problem's parameters
 	Parameters params(31, 93, 5, 149, 38);
 	
@@ -26,28 +32,28 @@ int main(int argc, char* argv[]) {
 		Time = ParallelAnalytical(data, params);
 		times << "analytical solving " << argv[1] << ";" << argv[2] << ": " << Time << "\n";
 		cout << "Saving results." << endl;
-		data.saveDataToFile("Analytical");
+		data.saveDataToFile(name);
 	}
 	else if (strcmp(argv[3], "ftcs") == 0) {
 		cout << "Computing Forward Time/Central Space solution" << endl;
 		Time = FTCS(data, params);
 		times << "ftcs solving " << argv[1] << ";" << argv[2] << ": " << Time << "\n";
 		cout << "Saving results." << endl;
-		data.saveDataToFile("FTCS");
+		data.saveDataToFile(name);
 	}
 	else if (strcmp(argv[3], "laasonen")  == 0) {
 		cout << "Computing Laasonen Implicit solution" << endl;
 		Time = laasonenImplicit(data, params);
 		times << "laasonen solving " << argv[1] << ";" << argv[2] << ": " << Time << "\n";
 		cout << "Saving results." << endl;
-		data.saveDataToFile("Laasonen");
+		data.saveDataToFile(name);
 	}
 	else if (strcmp(argv[3], "crank") == 0){
 		cout << "Computing Crank-Nicholson Implicit solution" << endl;
 		Time = crankNicholson(data, params);
 		times << "crank-nicholson solving " << argv[1] << ";" << argv[2] << ": " << Time << "\n";
 		cout << "Saving results." << endl;
-		data.saveDataToFile("Crank-Nicholson");
+		data.saveDataToFile(name);
 	}
 	/**/
 }

@@ -116,7 +116,7 @@ double FTCS(DataStorage &storage, const Parameters params) {
 	unsigned int numberOfX = params.getL() / storage.getDX() + 1;
 
 	//define r = D.(dt/dx^2)
-	double r = params.getD() * (storage.getDT() / pow(storage.getDX(), 2));
+	double r = params.getD() * (params.getDuration()*storage.getDT() / pow(params.getL()*storage.getDX(), 2));
 
 	//compute domain division
 	unsigned int subRange = (numberOfX / world_size);
@@ -448,7 +448,7 @@ double crankNicholson(DataStorage& storage, const Parameters params) {
 
 	//define r = D.(dt/dx^2)
 	//compute r
-	double r = params.getD() * storage.getDT() /(2 * pow(storage.getDX(), 2));
+	double r = params.getD() * (params.getDuration()*storage.getDT())/(2 * pow(params.getL()*storage.getDX(), 2));
 	//compute the coeficients of the linear system
 	double a = 1 + 2 * r;
 	double b = 1 - 2 * r;

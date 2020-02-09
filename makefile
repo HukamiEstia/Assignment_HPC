@@ -1,5 +1,5 @@
 
-CXX = mpic++
+CXX = mpicxx
 CXXFLAGS = -Wall -g -lstdc++
 
 run: ParallelMain.o Parameters.o DataStorage.o ParallelSolutions.o ParallelSolvers.o
